@@ -1,8 +1,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.title("Streamlit + 纯前端 3D 混合渲染测试 🧪")
-st.write("滑块是 Python 写的，下面的 3D 小球是 JS 渲染的。")
+st.title("3D魔丸")
+st.write("我有两颗高玩！！！")
 
 # 1. 在 Python 端获取用户输入的参数
 radius = st.slider("调节小球半径", min_value=1.0, max_value=5.0, value=2.0)
@@ -34,6 +34,7 @@ html_code = f"""
         // wireframe: true 让它显示为网格线框，看起来更有物理感
         const material = new THREE.MeshBasicMaterial({{ color: ballColor, wireframe: true }});
         const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
         scene.add(sphere);
 
         camera.position.z = 10;
