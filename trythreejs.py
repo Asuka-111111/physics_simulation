@@ -2,11 +2,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.title("3D魔丸")
-st.write("我有两颗高玩！！！")
+st.write("我有一颗高玩！！！")
 
 # 1. 在 Python 端获取用户输入的参数
-radius = st.slider("调节小球半径", min_value=1.0, max_value=5.0, value=2.0)
-color = st.selectbox("选择小球颜色", ["red", "#00ff00", "blue", "orange"])
+radius = st.slider("调节小球半径", min_value=1.0, max_value=9.0, value=2.0)
+color = st.selectbox("选择小球颜色", ["red", "#00ff00", "blue", "orange", "black"])
 
 # 2. 编写 HTML/JS 模板
 # 注意前面的 f"..."，这让我们可以在长文本里直接插入 Python 变量！
@@ -34,7 +34,6 @@ html_code = f"""
         // wireframe: true 让它显示为网格线框，看起来更有物理感
         const material = new THREE.MeshBasicMaterial({{ color: ballColor, wireframe: true }});
         const sphere = new THREE.Mesh(geometry, material);
-        scene.add(sphere);
         scene.add(sphere);
 
         camera.position.z = 10;
