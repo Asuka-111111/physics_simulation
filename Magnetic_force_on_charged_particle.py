@@ -4,11 +4,11 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="动态带电粒子运动模型", layout="wide")
 
-st.title("🧲 带电粒子在磁场中的动态运动")
+st.title("带电粒子在磁场中的动态运动")
 st.markdown("通过左侧侧边栏调节参数，点击图表下方的 **播放 (Play)** 按钮，观察粒子的实时运动过程。")
 
 # 侧边栏：参数输入
-st.sidebar.header("⚙️ 调节参数")
+st.sidebar.header("调节参数")
 
 # 粒子参数
 q = st.sidebar.slider("电荷量 q (C)", min_value=-5.0, max_value=5.0, value=1.0, step=0.5)
@@ -85,7 +85,7 @@ fig.update_layout(
         aspectmode='cube',
         camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
     ),
-    height=750,
+    height=900,
     margin=dict(l=0, r=0, b=0, t=0),
     template="plotly_dark",
     # 添加播放和暂停按钮
@@ -113,7 +113,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 # 底部展示计算出的物理量
 st.markdown("---")
-st.subheader("📊 物理参数解析")
+st.subheader("物理参数")
 col1, col2, col3 = st.columns(3)
 if q != 0 and Bz != 0:
     radius = (m * np.sqrt(vx**2 + vy**2)) / abs(q * Bz)
