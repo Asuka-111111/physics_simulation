@@ -2,148 +2,154 @@ import streamlit as st
 import numpy as np
 from scipy.integrate import odeint
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-# ================= 设置页面 =================
-st.set_page_config(page_title="3D电磁感应仿真", layout="wide")
-st.title("🧲 3D 电磁感应：条形磁铁穿过带电圆环")
-st.markdown("通过调节左侧侧边栏的物理参数，观察法拉第电磁感应定律与楞次定律在动态过程中的体现。")
+# ================= 页面设置 =================
+st.set_page_config(page_title="流畅版楞次定律仿真", layout="wide")
+st.title("🧲 3D 楞次定律：动态磁场与受力全解析")
+st.markdown("通过底部的 **▶ 播放** 按钮，观看磁铁穿过圆环的丝滑全过程。注意观察**绿色阻力**和**青色感应磁场**的变化！")
 
-# ================= 侧边栏：交互参数 =================
-st.sidebar.header("⚙️ 调节物理参数")
-M = st.sidebar.slider("磁铁质量 (kg)", min_value=0.1, max_value=2.0, value=0.5, step=0.1)
-m_dipole = st.sidebar.slider("磁偶极矩 (强度)", min_value=1.0, max_value=20.0, value=10.0, step=1.0)
-a = st.sidebar.slider("圆环半径 (m)", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
-R_res = st.sidebar.slider("圆环电阻 (Ω)", min_value=0.1, max_value=5.0, value=1.0, step=0.1)
+# ================= 侧边栏：参数调节 =================
+st.sidebar.header("⚙️ 物理参数 (调参后将重新计算)")
+M = st.sidebar.slider("磁铁质量 (kg)", 0.1, 2.0, 0.5, 0.1)
+m_dipole = st.sidebar.slider("磁性强度", 5.0, 25.0, 15.0, 1.0)
+R_res = st.sidebar.slider("圆环电阻 (Ω)", 0.1, 5.0, 1.0, 0.1)
 
-# ================= 物理常数与方程 =================
+# 物理常数
 g = 9.81
-# 为了让视觉效果明显，我们使用无量纲化的等效磁导率因子 (缩放后的物理系统)
-mu0_eff = 1.0 
+a = 1.2 # 圆环半径
 
-def induction_derivatives(state, t, M, g, m_dipole, a, R_res, mu0):
+# ================= 1. 物理引擎 (SciPy 预计算) =================
+# 预计算 120 帧数据，保证播放极其流畅
+num_frames = 120
+t = np.linspace(0, 1.2, num_frames)
+
+def derivatives(state, t, M, m_dipole, R_res):
     z, v = state
-    # 感应电流产生的磁场力 (楞次定律：始终阻碍运动)
-    # F_mag = - [9 * mu0^2 * m^2 * a^4 / (4 * R_res)] * [z^2 * v / (a^2 + z^2)^5]
-    C = (9 * mu0**2 * m_dipole**2 * a**4) / (4 * R_res)
-    F_mag = - C * (z**2 * v) / (a**2 + z**2)**5
-    
-    dzdt = v
-    dvdt = -g + (F_mag / M)
-    return [dzdt, dvdt]
+    # 楞次定律核心公式：计算感应磁场力
+    C = (9 * m_dipole**2 * a**4) / (4 * R_res)
+    denominator = (a**2 + z**2)**5
+    F_mag = - C * (z**2 * v) / denominator if denominator > 0 else 0
+    return [v, -g + (F_mag / M)]
 
-# ================= 求解物理运动轨迹 =================
-@st.cache_data
-def solve_physics(M, m_dipole, a, R_res):
-    t = np.linspace(0, 1.5, 150) # 模拟 1.5 秒
-    initial_state = [3.0, 0.0]   # 初始位置 z=3.0, 初速度 v=0
-    
-    # 使用 ODE 解算器计算轨迹
-    solution = odeint(induction_derivatives, initial_state, t, args=(M, g, m_dipole, a, R_res, mu0_eff))
-    z = solution[:, 0]
-    v = solution[:, 1]
-    
-    # 计算衍生物理量 (电流和磁力)
-    C = (9 * mu0_eff**2 * m_dipole**2 * a**4) / (4 * R_res)
-    F_mag = - C * (z**2 * v) / (a**2 + z**2)**5
-    # 感应电流 I ∝ z * v / (a^2 + z^2)^(5/2)
-    I = (3 * mu0_eff * m_dipole * a**2 * z * v) / (2 * R_res * (a**2 + z**2)**2.5)
-    
-    return t, z, v, F_mag, I
+# 计算运动轨迹
+initial_state = [3.5, 0.0] # 从 Z=3.5 处静止下落
+solution = odeint(derivatives, initial_state, t, args=(M, m_dipole, R_res))
+z_vals = solution[:, 0]
+v_vals = solution[:, 1]
 
-t, z, v, F_mag, I = solve_physics(M, m_dipole, a, R_res)
+# 预先计算每一帧的受力 (F) 和 感应磁场方向 (B_ind)
+F_vals = np.zeros(num_frames)
+B_ind_vals = np.zeros(num_frames)
+current_angle = np.zeros(num_frames)
+angle = 0
 
-# ================= 时间轴控制器 =================
-time_idx = st.slider("⏱️ 拖动时间轴观察下落过程", min_value=0, max_value=len(t)-1, value=0, format="第 %d 帧")
-current_z = z[time_idx]
-current_I = I[time_idx]
-current_F = F_mag[time_idx]
-
-# ================= 布局：左侧3D模型，右侧数据图 =================
-col1, col2 = st.columns([1.2, 1])
-
-with col1:
-    st.subheader("3D 物理空间")
-    fig3d = go.Figure()
-
-    # 1. 绘制导电圆环
-    theta = np.linspace(0, 2*np.pi, 100)
-    x_ring = a * np.cos(theta)
-    y_ring = a * np.sin(theta)
-    z_ring = np.zeros_like(theta)
-    
-    # 环的颜色根据电流大小和方向发光
-    ring_color = 'red' if current_I > 0 else 'blue' if current_I < 0 else 'gray'
-    line_width = 5 + abs(current_I) * 10 # 电流越大越粗
-
-    fig3d.add_trace(go.Scatter3d(
-        x=x_ring, y=y_ring, z=z_ring,
-        mode='lines',
-        line=dict(color=ring_color, width=line_width),
-        name="导电环 (颜色=电流方向)"
-    ))
-
-    # 2. 绘制条形磁铁 (用两个圆柱面拼接代表 N/S 极)
-    def get_cylinder(z_center, radius=0.2, length=0.6):
-        z_vals = np.linspace(z_center - length/2, z_center + length/2, 2)
-        theta_grid, z_grid = np.meshgrid(theta, z_vals)
-        x_grid = radius * np.cos(theta_grid)
-        y_grid = radius * np.sin(theta_grid)
-        return x_grid, y_grid, z_grid
-
-    mag_length = 0.6
-    # N极 (红色, 下半部)
-    x_n, y_n, z_n = get_cylinder(current_z - mag_length/4, length=mag_length/2)
-    fig3d.add_trace(go.Surface(x=x_n, y=y_n, z=z_n, colorscale=[[0,'red'],[1,'red']], showscale=False, name="N极"))
-    # S极 (蓝色, 上半部)
-    x_s, y_s, z_s = get_cylinder(current_z + mag_length/4, length=mag_length/2)
-    fig3d.add_trace(go.Surface(x=x_s, y=y_s, z=z_s, colorscale=[[0,'blue'],[1,'blue']], showscale=False, name="S极"))
-
-    # 3. 绘制磁场力向量 (向上)
-    if current_F > 0.1:
-        fig3d.add_trace(go.Cone(
-            x=[0], y=[0], z=[current_z + 0.5],
-            u=[0], v=[0], w=[current_F * 0.1], # 缩放矢量以适应视图
-            colorscale=[[0, 'green'], [1, 'green']],
-            sizemode="absolute", sizeref=0.5, showscale=False, name="安培阻力"
-        ))
-
-    # 设置 3D 视图属性，锁定镜头比例
-    fig3d.update_layout(
-        scene=dict(
-            xaxis=dict(range=[-3, 3], showbackground=False),
-            yaxis=dict(range=[-3, 3], showbackground=False),
-            zaxis=dict(range=[-1, 4], showbackground=False),
-            aspectmode='cube'
-        ),
-        margin=dict(l=0, r=0, b=0, t=0),
-        height=600
-    )
-    st.plotly_chart(fig3d, use_container_width=True)
-
-with col2:
-    st.subheader("实时物理量监测")
-    
-    # 动态曲线图
-    fig2d = make_subplots(rows=3, cols=1, shared_xaxes=True, 
-                          subplot_titles=("位置 Z (m) - 穿过0点", "感应电流 I (A) - 方向翻转", "磁场阻力 F (N) - 始终向上"))
-    
-    # 位置
-    fig2d.add_trace(go.Scatter(x=t, y=z, name="位置", line=dict(color='purple')), row=1, col=1)
-    fig2d.add_trace(go.Scatter(x=[t[time_idx]], y=[z[time_idx]], mode='markers', marker=dict(color='red', size=10), showlegend=False), row=1, col=1)
-    
-    # 电流
-    fig2d.add_trace(go.Scatter(x=t, y=I, name="电流", line=dict(color='orange')), row=2, col=1)
-    fig2d.add_trace(go.Scatter(x=[t[time_idx]], y=[I[time_idx]], mode='markers', marker=dict(color='red', size=10), showlegend=False), row=2, col=1)
+for i in range(num_frames):
+    z = z_vals[i]
+    v = v_vals[i]
     
     # 磁力
-    fig2d.add_trace(go.Scatter(x=t, y=F_mag, name="磁力", line=dict(color='green')), row=3, col=1)
-    fig2d.add_trace(go.Scatter(x=[t[time_idx]], y=[F_mag[time_idx]], mode='markers', marker=dict(color='red', size=10), showlegend=False), row=3, col=1)
-
-    fig2d.update_layout(height=600, showlegend=False, margin=dict(l=0, r=0, t=30, b=0))
-    # 增加一条垂直的指示线代表当前时间
-    fig2d.add_vline(x=t[time_idx], line_width=1, line_dash="dash", line_color="gray")
+    C = (9 * m_dipole**2 * a**4) / (4 * R_res)
+    F_vals[i] = - C * (z**2 * v) / (a**2 + z**2)**5
     
-    st.plotly_chart(fig2d, use_container_width=True)
+    # 感应磁场 B (正比于电流)。由于磁铁N极朝下，靠近时穿过环向下的磁通量增加，感应B朝上(正)
+    # v 是负数(往下掉)，z>0 时靠近，z<0 时远离
+    B_ind = - (m_dipole * z * v) / (a**2 + z**2)**2.5
+    B_ind_vals[i] = B_ind * 0.5 # 缩放以便于在图中显示
+    
+    # 积分计算电子跑动的角度
+    angle += B_ind * 0.5
+    current_angle[i] = angle
 
-st.info("💡 **物理洞察**：注意观察，当磁铁中心刚好穿过圆环平面 (Z=0) 的瞬间，磁通量变化率反转，导致**感应电流瞬间反向**。但无论电流方向如何，由于楞次定律，**安培力始终为正 (向上)**，阻碍磁铁下落，形成了电磁阻尼效应。")
+# ================= 2. Plotly 3D 动画构建 =================
+fig = go.Figure()
+
+# --- 辅助函数：生成 3D 向量线条 ---
+def create_vector(x, y, z, u, v, w, color, name):
+    return go.Scatter3d(
+        x=[x, x+u], y=[y, y+v], z=[z, z+w],
+        mode='lines+markers',
+        line=dict(color=color, width=6),
+        marker=dict(size=[0, 8], symbol='diamond', color=color), # 终点加一个箭头
+        name=name
+    )
+
+# --- 绘制静态圆环 ---
+theta = np.linspace(0, 2*np.pi, 100)
+fig.add_trace(go.Scatter3d(
+    x=a*np.cos(theta), y=a*np.sin(theta), z=np.zeros(100),
+    mode='lines', line=dict(color='#b87333', width=8), name='导电圆环'
+))
+
+# --- 初始化动态元素 (第 0 帧) ---
+# 磁铁 N 极 (红) 和 S 极 (蓝)
+fig.add_trace(go.Scatter3d(x=[0,0], y=[0,0], z=[z_vals[0]-0.4, z_vals[0]], mode='lines', line=dict(color='red', width=15), name='N极'))
+fig.add_trace(go.Scatter3d(x=[0,0], y=[0,0], z=[z_vals[0], z_vals[0]+0.4], mode='lines', line=dict(color='blue', width=15), name='S极'))
+# 阻力向量 (绿)
+fig.add_trace(create_vector(0, 0, z_vals[0], 0, 0, F_vals[0], 'green', '安培阻力'))
+# 感应磁场向量 (青)
+fig.add_trace(create_vector(0, 0, 0, 0, 0, B_ind_vals[0], 'cyan', '感应磁场'))
+# 电子位置 (黄)
+fig.add_trace(go.Scatter3d(
+    x=[a*np.cos(current_angle[0])], y=[a*np.sin(current_angle[0])], z=[0],
+    mode='markers', marker=dict(color='yellow', size=8), name='感应电流'
+))
+
+# --- 生成动画帧 ---
+frames = []
+for i in range(1, num_frames):
+    frames.append(go.Frame(
+        data=[
+            # 必须按照 add_trace 的顺序更新数据
+            go.Scatter3d(x=a*np.cos(theta), y=a*np.sin(theta), z=np.zeros(100)), # 环不变
+            go.Scatter3d(x=[0,0], y=[0,0], z=[z_vals[i]-0.4, z_vals[i]]), # N极更新
+            go.Scatter3d(x=[0,0], y=[0,0], z=[z_vals[i], z_vals[i]+0.4]), # S极更新
+            # 阻力向量更新：起点在磁铁上，长度为 F_vals[i]
+            go.Scatter3d(x=[0, 0], y=[0, 0], z=[z_vals[i], z_vals[i] + F_vals[i]*0.5]),
+            # 感应磁场更新：起点在原点，长度为 B_ind_vals[i]
+            go.Scatter3d(x=[0, 0], y=[0, 0], z=[0, B_ind_vals[i]]),
+            # 电子位置更新
+            go.Scatter3d(x=[a*np.cos(current_angle[i])], y=[a*np.sin(current_angle[i])], z=[0])
+        ],
+        name=f'frame{i}'
+    ))
+fig.frames = frames
+
+# --- 设置布局和播放按钮 ---
+fig.update_layout(
+    scene=dict(
+        xaxis=dict(range=[-2, 2], showbackground=False),
+        yaxis=dict(range=[-2, 2], showbackground=False),
+        zaxis=dict(range=[-4, 5], showbackground=False),
+        aspectmode='manual', aspectratio=dict(x=1, y=1, z=2),
+        camera=dict(eye=dict(x=1.5, y=1.5, z=1.0))
+    ),
+    height=700, margin=dict(l=0, r=0, b=0, t=0), template="plotly_dark",
+    updatemenus=[dict(
+        type="buttons", showactive=False, x=0.1, y=0, xanchor="right", yanchor="top",
+        buttons=[
+            dict(label="▶ 播放演示",
+                 method="animate",
+                 args=[None, dict(frame=dict(duration=30, redraw=True), 
+                                  transition=dict(duration=0), 
+                                  fromcurrent=True, mode="immediate")]),
+            dict(label="⏸ 暂停",
+                 method="animate",
+                 args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")])
+        ]
+    )]
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# ================= 物理现象解析 =================
+st.markdown("""
+### 🧠 观察指南与楞次定律解析
+1. **安培阻力（🟢 绿色箭头）**：
+   无论磁铁是在上半段（靠近）还是下半段（远离），绿色箭头**始终指向上方**。这就是楞次定律“来拒去留”的本质——感应电流产生的受力永远在阻碍磁铁的相对运动。
+2. **感应磁场（🔵 青色箭头）**：
+   * **靠近时 (Z > 0)**：穿过圆环向下的磁通量在增加，为了反抗增加，圆环会产生**向上**的感应磁场（青色箭头朝上）。
+   * **穿过中心 (Z = 0)**：瞬间变化率为 0，青色箭头消失，电流反转。
+   * **远离时 (Z < 0)**：穿过圆环向下的磁通量在减少，为了“挽留”减少，圆环会产生**向下**的感应磁场（青色箭头朝下）。
+3. **感应电流（🟡 黄色圆点）**：
+   代表圆环内的电子运动。你会明显看到它在磁铁穿过圆环中心的那一瞬间，发生了一次**急刹车并掉头**。
+""")
